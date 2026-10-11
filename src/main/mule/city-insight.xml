@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="7de17aa8-5702-4ae3-b1d3-aeb6661fb266" >
+		<http:listener-connection host="${http.host}" port="${http.port}" />
+	</http:listener-config>
+	<http:request-config name="geocoding-http-request-config" doc:name="HTTP Request configuration" doc:id="61029e08-1058-48c9-88a0-64647889f6d6" >
+		<http:request-connection host="${geocoding.host}" port="443" protocol="HTTPS"/>
+	</http:request-config>
+	<http:request-config name="weather-http-request-config" doc:name="HTTP Request configuration" doc:id="3949fab5-750a-4315-832c-9b4d120278f6" >
+		<http:request-connection protocol="HTTPS" host="${weather.host}" port="443"/>
+	</http:request-config>
+	<http:request-config name="country-http-request-config" doc:name="HTTP Request configuration" doc:id="1a7b1e9d-eee1-4731-ba13-25aeaf623f37" >
+		<http:request-connection protocol="HTTPS" host="${restcountries.host}" port="443"/>
+	</http:request-config>
+	<flow name="get-city-insightFlow" doc:id="791d8bf9-9b7d-4a2c-8071-7e325c269dc5">
+		<http:listener doc:name="GET /city" doc:id="9643ed4c-a2fe-4eb1-a27c-e6628cee297a" config-ref="HTTP_Listener_config" path="/city">
+			<http:error-response statusCode="#[vars.httpStatus default 500]">
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#["Content-Type": "application/json"]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<flow-ref doc:name="Log request" doc:id="b6592029-8412-407b-8746-c8a266084fd8" name="log-request-subflow"/>
+		<choice doc:name="Check Name Provided" doc:id="b622edba-d98f-436e-9001-be12460ae861">
+			<when expression="#[isEmpty(attributes.queryParams.name)]">
+				<raise-error doc:name="Raise BAD_REQUEST" doc:id="f681707d-a49f-4be4-b837-97515646c75d" type="APP:BAD_REQUEST" description="Query parameter 'name' is required" />
+			</when>
+		</choice>
+		<http:request method="GET" doc:name="Geocoding API" doc:id="54b278c8-6a4d-46dd-b0a4-51974bc79f7e" config-ref="geocoding-http-request-config" path="/v1/search">
+			<http:query-params><![CDATA[#[{ name: attributes.queryParams.name, count: 1 }]]]></http:query-params>
+		</http:request>
+		<choice doc:name="Check city found" doc:id="9d31c886-7296-4d3c-8d60-a4fcede599ff">
+			<when expression="#[isEmpty(payload.results)]">
+				<raise-error doc:name="Raise NOT_FOUND" doc:id="4b4e82da-fe7a-44f3-b7b8-f753343b1aa9" type="APP:NOT_FOUND" description="City not Found" />
+			</when>
+		</choice>
+		<set-variable value="#[payload.results[0]]" doc:name="Save geocoding result" doc:id="e149c09f-082e-4200-a461-6522dcfb40ad" variableName="	geoResult" />
+		<scatter-gather doc:name="Fetch weather and country" doc:id="5b0da1e9-5de2-4e8c-9a51-2cc7bd802a71">
+			<route>
+				<http:request method="GET" doc:name="Weather API" doc:id="c7aab638-a637-470e-bdf5-d1be07e092ba" config-ref="weather-http-request-config" path="/v1/forecast">
+					<http:query-params><![CDATA[#[{
+  latitude: vars.geoResult.latitude,
+  longitude: vars.geoResult.longitude,
+  current_weather: true
+}]]]></http:query-params>
+				</http:request>
+			</route>
+			<route>
+				<http:request method="GET" doc:name="Country API" doc:id="5e0cf8b0-ecfa-40d2-85a1-06ce2a15d625" config-ref="country-http-request-config" path='#["/countries/v5/codes.alpha_2/" ++ vars.geoResult.country_code]'>
+					<http:headers><![CDATA[#[{ "Authorization": "Bearer " ++ p('restcountries.api.key') }]]]></http:headers>
+				</http:request>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Preview results" doc:id="13ac5adf-f568-42f3-a60f-d5a17f82553c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var weather = payload."0".payload.current_weather
+var country = payload."1".payload.data.objects[0]
+var temp = weather.temperature
+---
+{
+  city: vars.geoResult.name,
+  country: country.names.common,
+  capital: country.capitals[0].name,
+  region: country.region,
+  population: country.population,
+  currency: country.currencies[0].code,
+  flag: country.flag.emoji,
+  weather: {
+    temperatureC: temp,
+    windKmh: weather.windspeed,
+    isDay: weather.is_day == 1
+  },
+  tip: if (temp >= 35) "Very hot. Stay hydrated and avoid midday sun."
+       else if (temp >= 25) "Warm. Light clothes are fine."
+       else if (temp >= 15) "Mild. A light jacket helps."
+       else "Cold. Dress warmly.",
+  generatedAt: now()
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<sub-flow name="log-request-subflow" doc:id="96cfe398-b381-429c-9415-843c34a47c57" >
+		<logger level="INFO" doc:name="Log incoming request" doc:id="b1fdd758-a4af-48d0-8c25-68e9c34445ad" message='#["Request " ++ attributes.method ++ " " ++ attributes.requestPath ++ " from " ++ attributes.remoteAddress]'/>
+	</sub-flow>
+</mule>

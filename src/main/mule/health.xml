@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="get-health-flow" doc:id="69350628-efcf-43e8-bfc1-2d2bbcd6ab70" >
+		<http:listener doc:name="Listener" doc:id="027ec770-36e2-4411-9a2f-feab74ab1747" config-ref="HTTP_Listener_config" path="/health" allowedMethods="GET">
+			<http:error-response statusCode="#[vars.httpStatus default 500]" >
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#[{ "Content-Type": "application/json" }]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<flow-ref doc:name="log-request" doc:id="268de38b-6504-44b8-9aa9-62e8086adcf2" name="log-request-subflow"/>
+		<ee:transform doc:name="Build health response" doc:id="7bc26e93-02b4-4bae-9d7c-da442600c6e6" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "UP",
+  application: "citypulse-api",
+  timestamp: now()
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

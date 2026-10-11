@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<os:object-store name="favorites-object-store" doc:name="Object store" doc:id="7df751e0-3743-4e4e-bb6d-34a82b42a837" />
+	<os:object-store name="object-store-config" doc:name="Object store" doc:id="640dc8d2-9745-4053-84e9-bff01004b290" />
+	<flow name="post-favourites-Flow" doc:id="a718739e-4b7d-4ef6-a2fb-72c19346b956" >
+		<http:listener doc:name="POST /favorites" doc:id="da1ed658-8486-4719-a6d2-9ca05e0806f6" config-ref="HTTP_Listener_config" path="/favourites" allowedMethods="POST">
+			<http:response statusCode="#[201]" />
+			<http:error-response statusCode="#[vars.httpStatus default 500]" >
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#[{ "Content-Type": "application/json" }]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<flow-ref doc:name="Log request" doc:id="46b4e444-ea43-45a4-815b-e378d83f6e72" name="log-request-subflow"/>
+		<choice doc:name="Check name in body" doc:id="70535619-58b9-4997-b7c7-e25bac2fd085" >
+			<when expression="#[isEmpty(payload.name)]">
+				<raise-error doc:name="Raise BAD_REQUEST" doc:id="e6f02171-210c-47d6-a03f-227e92e02a2e" type="APP:BAD_REQUEST" description="Field 'name' is required in the body"/>
+			</when>
+		</choice>
+		<ee:transform doc:name="Build Favourite" doc:id="cdc7d314-ec03-48b6-92d4-f7ca12632e03" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	name: payload.name,
+	country: payload.country default "unknown",
+	savedAt: now() as String
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<os:store doc:name="Save favorite" doc:id="29ea03e9-0e36-4220-b81c-3b4b6729f742" key="#[lower(payload.name)]" objectStore="favorites-object-store"/>
+		<ee:transform doc:name="Build confirmation" doc:id="293575ea-0eeb-4efe-a33c-f1807673c134" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{ message: "Favorite saved", city: payload.name }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="get-favorites-flow" doc:id="c7a75198-27ab-4a69-b7d0-9f3e5085dbf6" >
+		<http:listener doc:name="GET /favourites" doc:id="bbc9fb44-e864-4213-a1dd-6dae81664000" config-ref="HTTP_Listener_config" path="/favourites" allowedMethods="GET">
+			<http:error-response statusCode="#[vars.httpStatus default 500]" >
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#[{ "Content-Type": "application/json" }]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<flow-ref doc:name="log request" doc:id="8362c263-4ff4-4aa9-ad29-0b41ebd5b64b" name="log-request-subflow"/>
+		<os:retrieve-all doc:name="Get all favorites" doc:id="493cee46-97a2-4c17-9b49-164cc9abc028" objectStore="favorites-object-store"/>
+		<ee:transform doc:name="Build favorites list" doc:id="69bd8a0e-fe21-4253-9761-ce7848f58ecd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  count: sizeOf(payload),
+  favorites: payload pluck $
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

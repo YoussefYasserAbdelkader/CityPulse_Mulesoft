@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<configuration doc:name="Configuration" doc:id="c0b833de-7189-4e4e-b0c8-fe1cc2aece48" defaultErrorHandler-ref="global-error-handler" />
+	<configuration-properties doc:name="Configuration properties" doc:id="ead2e8ba-d78e-49fe-81f6-da9d2190164b" file="config.properties" />
+	<error-handler name="global-error-handler">
+    <on-error-propagate type="APP:BAD_REQUEST" doc:name="Handle BAD_REQUEST">
+        <set-payload value='#[output application/json --- { error: "Bad Request", message: error.description }]' doc:name="Build 400 body"/>
+        <set-variable variableName="httpStatus" value="400" doc:name="Set status 400"/>
+    </on-error-propagate>
+    <on-error-propagate type="APP:NOT_FOUND" doc:name="Handle NOT_FOUND">
+        <set-payload value='#[output application/json --- { error: "Not Found", message: error.description }]' doc:name="Build 404 body"/>
+        <set-variable variableName="httpStatus" value="404" doc:name="Set status 404"/>
+    </on-error-propagate>
+    <on-error-propagate type="HTTP:CONNECTIVITY" doc:name="Handle CONNECTIVITY">
+        <set-payload value='#[output application/json --- { error: "Bad Gateway", message: "An external service is unavailable" }]' doc:name="Build 502 body"/>
+        <set-variable variableName="httpStatus" value="502" doc:name="Set status 502"/>
+    </on-error-propagate>
+    <on-error-propagate type="MULE:COMPOSITE_ROUTING" doc:name="Handle ROUTE FAILURE">
+        <set-payload value='#[output application/json --- { error: "Bad Gateway", message: "An external service is unavailable" }]' doc:name="Build 502 body"/>
+        <set-variable variableName="httpStatus" value="502" doc:name="Set status 502"/>
+    </on-error-propagate>
+    <on-error-propagate type="ANY" doc:name="Handle UNEXPECTED">
+        <set-payload value='#[output application/json --- { error: "Internal Server Error", message: "Something went wrong" }]' doc:name="Build 500 body"/>
+        <set-variable variableName="httpStatus" value="500" doc:name="Set status 500"/>
+    </on-error-propagate>
+</error-handler>
+	
+	
+	</mule>
